@@ -26,6 +26,7 @@
 #include "common.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 /* USER CODE END Includes */
 
@@ -48,16 +49,21 @@ typedef struct _AppTypeDef
     CtrlStatesTypeDef Pre;
   }State;
 
+  struct
+  {
+    uint8_t Status;
+    uint8_t Outputs;
+  }Karuna;
+
   struct _status
   {
     uint32_t MainCycleTime;
     uint32_t UartTaskCnt;
     uint32_t SuccessParsedCmdCnt;
-    uint32_t Seconds;
     uint32_t QueryCnt;
     uint32_t UART_Receive_IT_ErrorCounter;
     uint32_t UartErrorCounter;
-
+    uint32_t UpTimeSec;
   }Diag;
 
 
@@ -68,6 +74,20 @@ typedef struct _AppTypeDef
 /* USER CODE BEGIN PD */
 #define UART_BUFFER_SIZE        40
 #define CMDLINE_UNKNOWN_PARAMETER_ERROR    "!UNKNOWN PARAMETER ERROR '%2s'"
+
+#define KRN_STAT_A0             (uint8_t)1<<0
+#define KRN_STAT_A1             (uint8_t)1<<1
+#define KRN_STAT_A2             (uint8_t)1<<2
+#define KRN_STAT_A3             (uint8_t)1<<3
+#define KRN_STAT_DSD_PCM        (uint8_t)1<<4
+#define KRN_STAT_H51            (uint8_t)1<<5
+#define KRN_STAT_H53            (uint8_t)1<<6
+
+#define KRN_CTRL_RCA            (uint8_t)1<<0
+#define KRN_CTRL_BNC            (uint8_t)1<<1
+#define KRN_CTRL_XLR            (uint8_t)1<<2
+#define KRN_CTRL_I2S            (uint8_t)1<<3
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -103,7 +123,20 @@ void LiveLedOff(void);
 void LiveLedOn(void);
 
 /*** UART/RS485 ***/
-char* CmdParser(char *line);
+char* RS485Parser(char *line);
+void RS485DirRx(void);
+void RS485DirTx(void);
+void RS485TxTask(void);
+
+/*** Karuna ***/
+uint8_t GetKarunaStatus(void);
+void SetKarunaOutputs(uint8_t state);
+void KarunaFerq22M5792(void);
+void KarunaFreq24M5760(void);
+void KarunaClockSelectTask(void);
+
+/*** Tools ***/
+void UpTimeTask(void);
 
 /* USER CODE END PFP */
 
@@ -133,6 +166,14 @@ int main(void)
   hLiveLed.LedOnFnPtr = &LiveLedOn;
   hLiveLed.HalfPeriodTimeMs = 500;
   LiveLedInit(&hLiveLed);
+
+  /*** RS485 ***/
+  RS485DirRx();
+
+  /*** Karuna ***/
+  Device.Karuna.Outputs = KRN_CTRL_RCA | KRN_CTRL_BNC | KRN_CTRL_XLR | KRN_CTRL_I2S;
+
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -162,8 +203,13 @@ int main(void)
     if(HAL_GetTick() - timestamp > 100)
     {
       timestamp = HAL_GetTick();
+      Device.Karuna.Status = GetKarunaStatus();
+      SetKarunaOutputs(Device.Karuna.Outputs);
+      KarunaClockSelectTask();
     }
     LiveLedTask(&hLiveLed);
+    RS485TxTask();
+    UpTimeTask();
   }
   /* USER CODE END 3 */
 }
@@ -337,7 +383,7 @@ void LiveLedOff(void)
 }
 
 
-/* UART ----------------------------------------------------------------------*/
+/* UART-RS485-----------------------------------------------------------------*/
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
 {
   if(HAL_UART_Receive_IT(context, (uint8_t *)&UartCharacter, 1) != HAL_OK)
@@ -347,7 +393,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
     if(UartCharacter == '\n')
     {
       UartRxBuffer[UartRxBufferPtr] = '\0';
-      strcpy(UartTxBuffer, CmdParser(UartRxBuffer));
+      strcpy(UartTxBuffer, RS485Parser(UartRxBuffer));
       UartRxBufferPtr = 0;
     }
     else
@@ -367,7 +413,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     Device.Diag.UART_Receive_IT_ErrorCounter++;
 }
 
-char* CmdParser(char *line)
+/* RS485-----------------------------------------------------------------------*/
+char* RS485Parser(char *line)
 {
   static char resp[UART_BUFFER_SIZE];
   char cmd[20];
@@ -401,91 +448,28 @@ char* CmdParser(char *line)
     }
     else if(!strcmp(cmd,"UPTIME?"))
     {
-  //    sprintf(resp, "%ld", Device.Diag.UpTimeSec);
+       sprintf(resp, "%ld", Device.Diag.UpTimeSec);
     }
-    else if(!strcmp(cmd,"FRQ:LRCK?"))
+    else if(!strcmp(cmd,"STATUS?"))
     {
-  //   sprintf(resp, "%ld", Device.Meas.FreqLRCK_MHz);
+       sprintf(resp, "%02X", Device.Karuna.Status);
     }
-    else if(!strcmp(cmd,"FRQ:BCLK?"))
+    else if(!strcmp(cmd,"OUTS?"))
     {
-   //   sprintf(resp, "%ld", Device.Meas.FreqBCLK_MHz);
-    }
-    else if(!strcmp(cmd,"XMOS:STATUS?"))
-    {
-  //   sprintf(resp, "%02X", Device.XMOS.Status);
-    }
-    else if(!strcmp(cmd,"XMOS:MUTE?"))
-    {
-  //    sprintf(resp, "%01d", Device.XMOS.IsMute);
-    }
-    else if(!strcmp(cmd,"MODE?"))
-    {
-  //    sprintf(resp, "%02d", (uint8_t)Device.Mode.Curr);
-    }
-    else if (!strcmp(cmd,"SRC:BYPAS?"))
-    {
-  //    sprintf(resp, "%01d", (uint8_t)Device.SRC.System.BYASS);
-    }
-    else if (!strcmp(cmd,"SRC:MUTE?"))
-    {
-    //  sprintf(resp, "%01d", (uint8_t)Device.SRC.System.MUTE);
-    }
-    else if (!strcmp(cmd,"SRC:PDN?"))
-    {
-  //    sprintf(resp, "%01d", (uint8_t)Device.SRC.System.PDN);
-    }
-    else if (!strcmp(cmd,"DAC:VOL1?"))
-    {
-  //    sprintf(resp, "%01d", (uint8_t)Device.BD34301.Volume1);
-    }
-    else if (!strcmp(cmd,"DAC:VOL2?"))
-    {
- //     sprintf(resp, "%01d", (uint8_t)Device.BD34301.Volume2);
+       sprintf(resp, "%02X", Device.Karuna.Outputs);
     }
     else
-    {
       strcpy(resp, "!UNKNOWN");
-    }
   }
   if(params == 2)
   {/*** Paraméteres utasitások ***/
-    if(!strcmp(cmd,"MODE"))
+    if(!strcmp(cmd,"OUTS"))
     {
- //     Device.Mode.Curr = (Modes_t) strtol(arg1, NULL, 0);
-      strcpy(resp, "RDY");
-    }
-    else if(!strcmp(cmd,"SRC:BYPAS"))
-    {
-  //    Device.SRC.System.BYASS = strtol(arg1, NULL, 0);
-      strcpy(resp, "RDY");
-    }
-    else if(!strcmp(cmd,"SRC:MUTE"))
-    {
-  //    Device.SRC.System.MUTE = strtol(arg1, NULL, 0);
-      strcpy(resp, "RDY");
-    }
-    else if(!strcmp(cmd,"SRC:PDN"))
-    {
- //     Device.SRC.System.PDN = strtol(arg1, NULL, 0);
-      strcpy(resp, "RDY");
-    }
-    else if(!strcmp(cmd,"DAC:VOL1"))
-    {
-  //    Device.BD34301.Volume1 = strtol(arg1, NULL, 0);
-  //    BD34301SettingsUpdate(&Device.BD34301);
-      strcpy(resp, "RDY");
-    }
-    else if(!strcmp(cmd,"DAC:VOL2"))
-    {
-   //   Device.BD34301.Volume2 = strtol(arg1, NULL, 0);
-   //   BD34301SettingsUpdate(&Device.BD34301);
+      Device.Karuna.Outputs = strtol(arg1, NULL, 0);
       strcpy(resp, "RDY");
     }
     else
-    {
       strcpy(resp, "!UNKNOWN");
-    }
   }
   uint8_t length = strlen(resp);
   resp[length] = '\n';
@@ -493,7 +477,132 @@ char* CmdParser(char *line)
   return resp;
 }
 
-/* RS485-----------------------------------------------------------------------*/
+void RS485TxTask(void)
+{
+  uint8_t txn=strlen(UartTxBuffer);
+  if( txn != 0)
+  {
+    RS485DirTx();
+    huart1.Instance->CR1 &= (~0x04);
+    DelayMs(1);
+    HAL_UART_Transmit(&huart1, (uint8_t*) UartTxBuffer, txn, 100);
+    UartTxBuffer[0] = 0;
+    RS485DirRx();
+    huart1.Instance->CR1 |= 0x04;
+  }
+}
+
+void RS485DirTx(void)
+{
+  HAL_GPIO_WritePin(USART1_DIR_GPIO_Port, USART1_DIR_Pin, GPIO_PIN_SET);
+}
+
+void RS485DirRx(void)
+{
+  HAL_GPIO_WritePin(USART1_DIR_GPIO_Port, USART1_DIR_Pin, GPIO_PIN_RESET);
+}
+
+/* Karuna----------------------------------------------------------------------*/
+uint8_t GetKarunaStatus(void)
+{
+  uint8_t status = 0;
+
+  if(HAL_GPIO_ReadPin(SEL_0_ISO_GPIO_Port, SEL_0_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_A0;
+
+  if(HAL_GPIO_ReadPin(SEL_1_ISO_GPIO_Port, SEL_1_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_A1;
+
+  if(HAL_GPIO_ReadPin(SEL_2_ISO_GPIO_Port, SEL_2_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_A2;
+
+  if(HAL_GPIO_ReadPin(SEL_3_ISO_GPIO_Port, SEL_3_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_A3;
+
+  if(HAL_GPIO_ReadPin(DSD_PCM_ISO_GPIO_Port, DSD_PCM_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_DSD_PCM;
+
+  if(HAL_GPIO_ReadPin(DSD_PCM_ISO_GPIO_Port, DSD_PCM_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_DSD_PCM;
+
+  if(HAL_GPIO_ReadPin(H5_3_ISO_GPIO_Port, H5_3_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_H53;
+
+  if(HAL_GPIO_ReadPin(H5_1_ISO_GPIO_Port, H5_1_ISO_Pin) == GPIO_PIN_RESET)
+    status |= KRN_STAT_H51;
+
+  return status;
+}
+
+void SetKarunaOutputs(uint8_t state)
+{
+  if(state & KRN_CTRL_RCA)
+    HAL_GPIO_WritePin(EN_SPDIF_0_GPIO_Port, EN_SPDIF_0_Pin, GPIO_PIN_SET);
+  else
+    HAL_GPIO_WritePin(EN_SPDIF_0_GPIO_Port, EN_SPDIF_0_Pin, GPIO_PIN_RESET);
+
+  if(state & KRN_CTRL_BNC)
+    HAL_GPIO_WritePin(EN_SPDIF_1_GPIO_Port, EN_SPDIF_1_Pin, GPIO_PIN_SET);
+  else
+    HAL_GPIO_WritePin(EN_SPDIF_1_GPIO_Port, EN_SPDIF_1_Pin, GPIO_PIN_RESET);
+
+  if(state & KRN_CTRL_XLR)
+    HAL_GPIO_WritePin(EN_AES_GPIO_Port, EN_AES_Pin, GPIO_PIN_SET);
+  else
+    HAL_GPIO_WritePin(EN_AES_GPIO_Port, EN_AES_Pin, GPIO_PIN_RESET);
+
+  if(state & KRN_CTRL_I2S)
+    HAL_GPIO_WritePin(EN_I2S_GPIO_Port, EN_I2S_Pin, GPIO_PIN_SET);
+  else
+    HAL_GPIO_WritePin(EN_I2S_GPIO_Port, EN_I2S_Pin, GPIO_PIN_RESET);
+};
+
+void KarunaFerq22M5792(void)
+{
+  HAL_GPIO_WritePin(FREQ_MUX_SEL_GPIO_Port, FREQ_MUX_SEL_Pin, GPIO_PIN_SET);
+}
+
+void KarunaFreq24M5760(void)
+{
+  HAL_GPIO_WritePin(FREQ_MUX_SEL_GPIO_Port, FREQ_MUX_SEL_Pin, GPIO_PIN_RESET);
+}
+
+void KarunaClockSelectTask(void)
+{
+
+  uint8_t a0 = (Device.Karuna.Status & KRN_STAT_A0) == KRN_STAT_A0;
+  uint8_t dsd = (Device.Karuna.Status & KRN_STAT_DSD_PCM) == KRN_STAT_DSD_PCM;
+
+  if(!a0 && !dsd)
+  {
+    KarunaFerq22M5792();
+  }
+  if(!a0 && dsd)
+  {
+    KarunaFerq22M5792();
+  }
+  if(a0 && !dsd)
+  {
+    KarunaFreq24M5760();
+  }
+  if(a0 && dsd)
+  {
+    KarunaFerq22M5792();
+  }
+}
+/* Tools----------------------------------------------------------------------*/
+void UpTimeTask(void)
+{
+  static uint32_t timestamp;
+
+  if(HAL_GetTick() - timestamp > 1000)
+  {
+    timestamp = HAL_GetTick();
+    Device.Diag.UpTimeSec++;
+  }
+}
+
+
 
 /* USER CODE END 4 */
 
