@@ -19,7 +19,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "liveLed.h"
@@ -59,8 +58,12 @@ typedef struct _AppTypeDef
   {
     uint32_t MainCycleTime;
     uint32_t UartTaskCnt;
-    uint32_t SuccessParsedCmdCnt;
-    uint32_t QueryCnt;
+
+    uint32_t RS485ResponseCnt;
+    uint32_t RS485RequestCnt;
+    uint32_t RS485UnknwonCnt;
+
+
     uint32_t UART_Receive_IT_ErrorCounter;
     uint32_t UartErrorCounter;
     uint32_t UpTimeSec;
@@ -226,10 +229,13 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -239,12 +245,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -300,7 +306,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 9600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -404,11 +410,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
     Device.Diag.UartErrorCounter++;
-  __HAL_UART_CLEAR_FLAG(huart,UART_FLAG_PE);
-  __HAL_UART_CLEAR_FLAG(huart,UART_FLAG_FE);
-  __HAL_UART_CLEAR_FLAG(huart,UART_FLAG_NE);
-  __HAL_UART_CLEAR_FLAG(huart,UART_FLAG_ORE);
-  UartRxBufferPtr = 0;
+    __HAL_UART_CLEAR_PEFLAG(huart);
+    __HAL_UART_CLEAR_FEFLAG(huart);
+    __HAL_UART_CLEAR_NEFLAG(huart);
+    __HAL_UART_CLEAR_OREFLAG(huart);
+
+  //UartRxBufferPtr = 0;
   if(HAL_UART_Receive_IT(huart, (uint8_t *)&UartCharacter, 1) != HAL_OK)
     Device.Diag.UART_Receive_IT_ErrorCounter++;
 }
@@ -423,7 +430,7 @@ char* RS485Parser(char *line)
 
   memset(resp,0x00,UART_BUFFER_SIZE );
   uint8_t params = sscanf(line, "%s %s %s", cmd, arg1, arg2);
-
+  Device.Diag.RS485RequestCnt++;
   if(params == 1)
   {/*** parméter mentes utasitások ***/
     if(!strcmp(cmd, "*OPC?"))
@@ -436,30 +443,33 @@ char* RS485Parser(char *line)
     }
     else if(!strcmp(cmd, "*WHOIS?"))
     {
-      strcpy(resp, DEVICE_NAME);
+    	sprintf(resp, "*WHOIS %s", DEVICE_NAME);
     }
     else if(!strcmp(cmd, "*VER?"))
     {
-      strcpy(resp, DEVICE_FW);
+      sprintf(resp, "*VER %s", DEVICE_FW);
     }
     else if(!strcmp(cmd, "*UID?"))
     {
-      sprintf(resp, "%4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
+      sprintf(resp, "*UID %4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
     }
     else if(!strcmp(cmd,"UPTIME?"))
     {
-       sprintf(resp, "%ld", Device.Diag.UpTimeSec);
+       sprintf(resp, "UPTIME %ld", Device.Diag.UpTimeSec);
     }
     else if(!strcmp(cmd,"STATUS?"))
     {
-       sprintf(resp, "%02X", Device.Karuna.Status);
+       sprintf(resp, "STATUS %02X", Device.Karuna.Status);
     }
     else if(!strcmp(cmd,"OUTS?"))
     {
-       sprintf(resp, "%02X", Device.Karuna.Outputs);
+       sprintf(resp, "OUTS %02X", Device.Karuna.Outputs);
     }
     else
-      strcpy(resp, "!UNKNOWN");
+    {
+    	Device.Diag.RS485UnknwonCnt++;
+    	sprintf(resp, "!UNKNOWN %03d", Device.Diag.RS485UnknwonCnt );
+    }
   }
   if(params == 2)
   {/*** Paraméteres utasitások ***/
@@ -468,8 +478,11 @@ char* RS485Parser(char *line)
       Device.Karuna.Outputs = strtol(arg1, NULL, 0);
       strcpy(resp, "RDY");
     }
-    else
-      strcpy(resp, "!UNKNOWN");
+	else
+	{
+		Device.Diag.RS485UnknwonCnt++;
+		sprintf(resp, "!UNKNOWN %03d", Device.Diag.RS485UnknwonCnt );
+	}
   }
   uint8_t length = strlen(resp);
   resp[length] = '\n';
@@ -482,13 +495,14 @@ void RS485TxTask(void)
   uint8_t txn=strlen(UartTxBuffer);
   if( txn != 0)
   {
+	Device.Diag.RS485ResponseCnt++;
     RS485DirTx();
-    huart1.Instance->CR1 &= (~0x04);
-    DelayMs(1);
+   // huart1.Instance->CR1 &= (~0x04);
+    DelayMs(10);
     HAL_UART_Transmit(&huart1, (uint8_t*) UartTxBuffer, txn, 100);
     UartTxBuffer[0] = 0;
     RS485DirRx();
-    huart1.Instance->CR1 |= 0x04;
+   // huart1.Instance->CR1 |= 0x04;
   }
 }
 
