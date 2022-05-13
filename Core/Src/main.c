@@ -455,7 +455,7 @@ char* RS485Parser(char *line)
     }
     else if(!strcmp(cmd,"UPTIME?"))
     {
-       sprintf(resp, "UPTIME %ld", Device.Diag.UpTimeSec);
+       sprintf(resp, "UPTIME %08X", Device.Diag.UpTimeSec);
     }
     else if(!strcmp(cmd,"STATUS?"))
     {
@@ -475,7 +475,7 @@ char* RS485Parser(char *line)
   {/*** Paraméteres utasitások ***/
     if(!strcmp(cmd,"OUTS"))
     {
-      Device.Karuna.Outputs = strtol(arg1, NULL, 0);
+      Device.Karuna.Outputs = strtol(arg1, NULL, 16);
       strcpy(resp, "RDY");
     }
 	else
