@@ -50,8 +50,8 @@ typedef struct _AppTypeDef
 
   struct
   {
-    uint8_t Status;
-    uint8_t Outputs;
+    uint8_t DI;
+    uint8_t DO;
   }Karuna;
 
   struct _status
@@ -62,21 +62,21 @@ typedef struct _AppTypeDef
     uint32_t RS485ResponseCnt;
     uint32_t RS485RequestCnt;
     uint32_t RS485UnknwonCnt;
-
+    uint32_t RS485NotMyCmdCnt;
 
     uint32_t UART_Receive_IT_ErrorCounter;
     uint32_t UartErrorCounter;
     uint32_t UpTimeSec;
-  }Diag;
 
+  }Diag;
 
 }DeviceTypeDef;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define UART_BUFFER_SIZE        40
-#define CMDLINE_UNKNOWN_PARAMETER_ERROR    "!UNKNOWN PARAMETER ERROR '%2s'"
+#define RS485_BUFFER_SIZE        40
+#define DEVICE_ADDRESS          0x01
 
 #define KRN_STAT_A0             (uint8_t)1<<0
 #define KRN_STAT_A1             (uint8_t)1<<1
@@ -107,8 +107,8 @@ UART_HandleTypeDef huart1;
 DeviceTypeDef Device;
 LiveLED_HnadleTypeDef hLiveLed;
 
-char UartRxBuffer[UART_BUFFER_SIZE];
-char UartTxBuffer[UART_BUFFER_SIZE];
+char UartRxBuffer[RS485_BUFFER_SIZE];
+char UartTxBuffer[RS485_BUFFER_SIZE];
 char        UartCharacter;
 uint8_t     UartRxBufferPtr;
 
@@ -174,7 +174,7 @@ int main(void)
   RS485DirRx();
 
   /*** Karuna ***/
-  Device.Karuna.Outputs = KRN_CTRL_RCA | KRN_CTRL_BNC | KRN_CTRL_XLR | KRN_CTRL_I2S;
+  Device.Karuna.DO = KRN_CTRL_RCA | KRN_CTRL_BNC | KRN_CTRL_XLR | KRN_CTRL_I2S;
 
 
   /* USER CODE END Init */
@@ -206,8 +206,8 @@ int main(void)
     if(HAL_GetTick() - timestamp > 100)
     {
       timestamp = HAL_GetTick();
-      Device.Karuna.Status = GetKarunaStatus();
-      SetKarunaOutputs(Device.Karuna.Outputs);
+      Device.Karuna.DI = GetKarunaStatus();
+      SetKarunaOutputs(Device.Karuna.DO);
       KarunaClockSelectTask();
     }
     LiveLedTask(&hLiveLed);
@@ -415,7 +415,6 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     __HAL_UART_CLEAR_NEFLAG(huart);
     __HAL_UART_CLEAR_OREFLAG(huart);
 
-  //UartRxBufferPtr = 0;
   if(HAL_UART_Receive_IT(huart, (uint8_t *)&UartCharacter, 1) != HAL_OK)
     Device.Diag.UART_Receive_IT_ErrorCounter++;
 }
@@ -423,67 +422,77 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 /* RS485-----------------------------------------------------------------------*/
 char* RS485Parser(char *line)
 {
-  static char resp[UART_BUFFER_SIZE];
+  char buffer[RS485_BUFFER_SIZE];
+  uint8_t addr = 0;
   char cmd[20];
   char arg1[10];
   char arg2[10];
-
-  memset(resp,0x00,UART_BUFFER_SIZE );
-  uint8_t params = sscanf(line, "%s %s %s", cmd, arg1, arg2);
+  memset(buffer, 0x00, RS485_BUFFER_SIZE);
+  uint8_t params = sscanf(line, "#%x %s %s %s",&addr, cmd, arg1, arg2);
+  if(addr != DEVICE_ADDRESS)
+  {
+    Device.Diag.RS485NotMyCmdCnt++;
+    return NULL;
+  }
   Device.Diag.RS485RequestCnt++;
-  if(params == 1)
-  {/*** parméter mentes utasitások ***/
+  if(params == 2)
+  {
     if(!strcmp(cmd, "*OPC?"))
     {
-      strcpy(resp, "*OPC");
+      strcpy(buffer, "OK");
     }
     else if(!strcmp(cmd, "*RDY?"))
     {
-      strcpy(resp, "*RDY");
+      strcpy(buffer, "OK");
     }
     else if(!strcmp(cmd, "*WHOIS?"))
     {
-    	sprintf(resp, "*WHOIS %s", DEVICE_NAME);
+    	sprintf(buffer, "*WHOIS %s", DEVICE_NAME);
     }
     else if(!strcmp(cmd, "*VER?"))
     {
-      sprintf(resp, "*VER %s", DEVICE_FW);
+      sprintf(buffer, "*VER %s", DEVICE_FW);
     }
     else if(!strcmp(cmd, "*UID?"))
     {
-      sprintf(resp, "*UID %4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
+      sprintf(buffer, "*UID %4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
     }
     else if(!strcmp(cmd,"UPTIME?"))
     {
-       sprintf(resp, "UPTIME %08X", Device.Diag.UpTimeSec);
+       sprintf(buffer, "UPTIME %08lX", Device.Diag.UpTimeSec);
     }
     else if(!strcmp(cmd,"STATUS?"))
     {
-       sprintf(resp, "STATUS %02X", Device.Karuna.Status);
+       sprintf(buffer, "STATUS %02X", Device.Karuna.DI);
     }
     else if(!strcmp(cmd,"OUTS?"))
     {
-       sprintf(resp, "OUTS %02X", Device.Karuna.Outputs);
+       sprintf(buffer, "OUTS %02X", Device.Karuna.DO);
     }
     else
     {
-    	Device.Diag.RS485UnknwonCnt++;
-    	sprintf(resp, "!UNKNOWN %03d", Device.Diag.RS485UnknwonCnt );
+      Device.Diag.RS485UnknwonCnt++;
+      sprintf(buffer, "!UNKNOWN %03lu", Device.Diag.RS485UnknwonCnt );
     }
   }
-  if(params == 2)
-  {/*** Paraméteres utasitások ***/
-    if(!strcmp(cmd,"OUTS"))
+  if(params == 3)
+  {
+    if(!strcmp(cmd,"DO"))
     {
-      Device.Karuna.Outputs = strtol(arg1, NULL, 16);
-      strcpy(resp, "RDY");
+      Device.Karuna.DO = strtol(arg1, NULL, 16);
+      strcpy(buffer, "OK");
     }
-	else
-	{
-		Device.Diag.RS485UnknwonCnt++;
-		sprintf(resp, "!UNKNOWN %03d", Device.Diag.RS485UnknwonCnt );
-	}
+    else
+    {
+      Device.Diag.RS485UnknwonCnt++;
+      sprintf(buffer, "!UNKNOWN %03lu", Device.Diag.RS485UnknwonCnt );
+    }
   }
+
+  static char resp[RS485_BUFFER_SIZE];
+  memset(resp,0x00,RS485_BUFFER_SIZE);
+  sprintf(resp, "#%02X %s", DEVICE_ADDRESS, buffer);
+
   uint8_t length = strlen(resp);
   resp[length] = '\n';
   resp[length + 1] = '\0';
@@ -495,14 +504,12 @@ void RS485TxTask(void)
   uint8_t txn=strlen(UartTxBuffer);
   if( txn != 0)
   {
-	Device.Diag.RS485ResponseCnt++;
+    Device.Diag.RS485ResponseCnt++;
     RS485DirTx();
-   // huart1.Instance->CR1 &= (~0x04);
     DelayMs(10);
     HAL_UART_Transmit(&huart1, (uint8_t*) UartTxBuffer, txn, 100);
     UartTxBuffer[0] = 0;
     RS485DirRx();
-   // huart1.Instance->CR1 |= 0x04;
   }
 }
 
@@ -584,8 +591,8 @@ void KarunaFreq24M5760(void)
 void KarunaClockSelectTask(void)
 {
 
-  uint8_t a0 = (Device.Karuna.Status & KRN_STAT_A0) == KRN_STAT_A0;
-  uint8_t dsd = (Device.Karuna.Status & KRN_STAT_DSD_PCM) == KRN_STAT_DSD_PCM;
+  uint8_t a0 = (Device.Karuna.DI & KRN_STAT_A0) == KRN_STAT_A0;
+  uint8_t dsd = (Device.Karuna.DI & KRN_STAT_DSD_PCM) == KRN_STAT_DSD_PCM;
 
   if(!a0 && !dsd)
   {
