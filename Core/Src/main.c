@@ -48,13 +48,13 @@ typedef struct _AppTypeDef
     CtrlStatesTypeDef Pre;
   }State;
 
-  struct
+  struct _Karuna
   {
     uint8_t DI;
     uint8_t DO;
   }Karuna;
 
-  struct _status
+  struct _Diag
   {
     uint32_t MainCycleTime;
     uint32_t UartTaskCnt;
@@ -107,6 +107,7 @@ UART_HandleTypeDef huart1;
 DeviceTypeDef Device;
 LiveLED_HnadleTypeDef hLiveLed;
 
+/*** RS485 ***/
 char UartRxBuffer[RS485_BUFFER_SIZE];
 char UartTxBuffer[RS485_BUFFER_SIZE];
 char        UartCharacter;
@@ -132,8 +133,8 @@ void RS485DirTx(void);
 void RS485TxTask(void);
 
 /*** Karuna ***/
-uint8_t GetKarunaStatus(void);
-void SetKarunaOutputs(uint8_t state);
+uint8_t ReadDI(void);
+void WriteDO(uint8_t state);
 void KarunaFerq22M5792(void);
 void KarunaFreq24M5760(void);
 void KarunaClockSelectTask(void);
@@ -206,8 +207,8 @@ int main(void)
     if(HAL_GetTick() - timestamp > 100)
     {
       timestamp = HAL_GetTick();
-      Device.Karuna.DI = GetKarunaStatus();
-      SetKarunaOutputs(Device.Karuna.DO);
+      Device.Karuna.DI = ReadDI();
+      WriteDO(Device.Karuna.DO);
       KarunaClockSelectTask();
     }
     LiveLedTask(&hLiveLed);
@@ -419,11 +420,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     Device.Diag.UART_Receive_IT_ErrorCounter++;
 }
 
-/* RS485-----------------------------------------------------------------------*/
 char* RS485Parser(char *line)
 {
   char buffer[RS485_BUFFER_SIZE];
-  uint8_t addr = 0;
+  unsigned int addr = 0;
   char cmd[20];
   char arg1[10];
   char arg2[10];
@@ -461,18 +461,17 @@ char* RS485Parser(char *line)
     {
        sprintf(buffer, "UPTIME %08lX", Device.Diag.UpTimeSec);
     }
-    else if(!strcmp(cmd,"STATUS?"))
+    else if(!strcmp(cmd,"DI?"))
     {
-       sprintf(buffer, "STATUS %02X", Device.Karuna.DI);
+       sprintf(buffer, "DI %02X", Device.Karuna.DI);
     }
-    else if(!strcmp(cmd,"OUTS?"))
+    else if(!strcmp(cmd,"DO?"))
     {
-       sprintf(buffer, "OUTS %02X", Device.Karuna.DO);
+       sprintf(buffer, "DO %02X", Device.Karuna.DO);
     }
     else
     {
       Device.Diag.RS485UnknwonCnt++;
-      sprintf(buffer, "!UNKNOWN %03lu", Device.Diag.RS485UnknwonCnt );
     }
   }
   if(params == 3)
@@ -485,12 +484,11 @@ char* RS485Parser(char *line)
     else
     {
       Device.Diag.RS485UnknwonCnt++;
-      sprintf(buffer, "!UNKNOWN %03lu", Device.Diag.RS485UnknwonCnt );
     }
   }
 
-  static char resp[RS485_BUFFER_SIZE];
-  memset(resp,0x00,RS485_BUFFER_SIZE);
+  static char resp[2 * RS485_BUFFER_SIZE];
+  memset(resp, 0x00, RS485_BUFFER_SIZE);
   sprintf(resp, "#%02X %s", DEVICE_ADDRESS, buffer);
 
   uint8_t length = strlen(resp);
@@ -523,39 +521,39 @@ void RS485DirRx(void)
   HAL_GPIO_WritePin(USART1_DIR_GPIO_Port, USART1_DIR_Pin, GPIO_PIN_RESET);
 }
 
-/* Karuna----------------------------------------------------------------------*/
-uint8_t GetKarunaStatus(void)
+/* Karuna---------------------------------------------------------------------*/
+uint8_t ReadDI(void)
 {
-  uint8_t status = 0;
+  uint8_t state = 0;
 
   if(HAL_GPIO_ReadPin(SEL_0_ISO_GPIO_Port, SEL_0_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_A0;
+    state |= KRN_STAT_A0;
 
   if(HAL_GPIO_ReadPin(SEL_1_ISO_GPIO_Port, SEL_1_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_A1;
+    state |= KRN_STAT_A1;
 
   if(HAL_GPIO_ReadPin(SEL_2_ISO_GPIO_Port, SEL_2_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_A2;
+    state |= KRN_STAT_A2;
 
   if(HAL_GPIO_ReadPin(SEL_3_ISO_GPIO_Port, SEL_3_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_A3;
+    state |= KRN_STAT_A3;
 
   if(HAL_GPIO_ReadPin(DSD_PCM_ISO_GPIO_Port, DSD_PCM_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_DSD_PCM;
+    state |= KRN_STAT_DSD_PCM;
 
   if(HAL_GPIO_ReadPin(DSD_PCM_ISO_GPIO_Port, DSD_PCM_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_DSD_PCM;
+    state |= KRN_STAT_DSD_PCM;
 
   if(HAL_GPIO_ReadPin(H5_3_ISO_GPIO_Port, H5_3_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_H53;
+    state |= KRN_STAT_H53;
 
   if(HAL_GPIO_ReadPin(H5_1_ISO_GPIO_Port, H5_1_ISO_Pin) == GPIO_PIN_RESET)
-    status |= KRN_STAT_H51;
+    state |= KRN_STAT_H51;
 
-  return status;
+  return state;
 }
 
-void SetKarunaOutputs(uint8_t state)
+void WriteDO(uint8_t state)
 {
   if(state & KRN_CTRL_RCA)
     HAL_GPIO_WritePin(EN_SPDIF_0_GPIO_Port, EN_SPDIF_0_Pin, GPIO_PIN_SET);
