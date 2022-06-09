@@ -75,11 +75,17 @@ typedef struct _AppTypeDef
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define RS485_BUFFER_SIZE     40
-#define RS485_TX_HOLD_MS     1
-#define CLIENT_TX_ADDR        0x10
-#define CLIENT_RX_ADDR        0x01
 
+/*** RS485 ***/
+#define RS485_BUFFER_SIZE   40
+#define RS485_TX_HOLD_MS     1
+#define RS485_CMD_LENGTH    10
+#define RS485_ARG1_LENGTH   10
+#define RS485_ARG2_LENGTH   10
+#define CLIENT_TX_ADDR      0x10
+#define CLIENT_RX_ADDR      0x01
+
+/*** Karuna ***/
 #define KRN_STAT_A0             (uint8_t)1<<0
 #define KRN_STAT_A1             (uint8_t)1<<1
 #define KRN_STAT_A2             (uint8_t)1<<2
@@ -424,12 +430,17 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 
 char* RS485Parser(char *line)
 {
-  char buffer[RS485_BUFFER_SIZE];
   unsigned int addr = 0;
-  char cmd[20];
-  char arg1[10];
-  char arg2[10];
+  char buffer[RS485_BUFFER_SIZE];
+  char cmd[RS485_CMD_LENGTH];
+  char arg1[RS485_ARG1_LENGTH];
+  char arg2[RS485_ARG2_LENGTH];
+
   memset(buffer, 0x00, RS485_BUFFER_SIZE);
+  memset(cmd,0x00, RS485_CMD_LENGTH);
+  memset(arg1,0x00, RS485_ARG1_LENGTH);
+  memset(arg2,0x00, RS485_ARG2_LENGTH);
+
   uint8_t params = sscanf(line, "#%x %s %s %s",&addr, cmd, arg1, arg2);
   if(addr != CLIENT_RX_ADDR)
   {
