@@ -75,8 +75,10 @@ typedef struct _AppTypeDef
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define RS485_BUFFER_SIZE        40
-#define DEVICE_ADDRESS          0x01
+#define RS485_BUFFER_SIZE     40
+#define RS485_TX_HOLD_MS     1
+#define CLIENT_TX_ADDR        0x10
+#define CLIENT_RX_ADDR        0x01
 
 #define KRN_STAT_A0             (uint8_t)1<<0
 #define KRN_STAT_A1             (uint8_t)1<<1
@@ -429,7 +431,7 @@ char* RS485Parser(char *line)
   char arg2[10];
   memset(buffer, 0x00, RS485_BUFFER_SIZE);
   uint8_t params = sscanf(line, "#%x %s %s %s",&addr, cmd, arg1, arg2);
-  if(addr != DEVICE_ADDRESS)
+  if(addr != CLIENT_RX_ADDR)
   {
     Device.Diag.RS485NotMyCmdCnt++;
     return NULL;
@@ -489,7 +491,7 @@ char* RS485Parser(char *line)
 
   static char resp[2 * RS485_BUFFER_SIZE];
   memset(resp, 0x00, RS485_BUFFER_SIZE);
-  sprintf(resp, "#%02X %s", DEVICE_ADDRESS, buffer);
+  sprintf(resp, "#%02X %s", CLIENT_TX_ADDR, buffer);
 
   uint8_t length = strlen(resp);
   resp[length] = '\n';
@@ -504,7 +506,7 @@ void RS485TxTask(void)
   {
     Device.Diag.RS485ResponseCnt++;
     RS485DirTx();
-    DelayMs(10);
+    DelayMs(RS485_TX_HOLD_MS);
     HAL_UART_Transmit(&huart1, (uint8_t*) UartTxBuffer, txn, 100);
     UartTxBuffer[0] = 0;
     RS485DirRx();
