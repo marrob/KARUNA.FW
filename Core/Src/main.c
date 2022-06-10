@@ -77,27 +77,29 @@ typedef struct _AppTypeDef
 /* USER CODE BEGIN PD */
 
 /*** RS485 ***/
-#define RS485_BUFFER_SIZE   40
-#define RS485_TX_HOLD_MS     1
-#define RS485_CMD_LENGTH    10
-#define RS485_ARG1_LENGTH   10
-#define RS485_ARG2_LENGTH   10
-#define CLIENT_TX_ADDR      0x10
-#define CLIENT_RX_ADDR      0x01
+#define RS485_BUFFER_SIZE     40
+#define RS485_TX_HOLD_MS      1
+#define RS485_CMD_LENGTH      35
+#define RS485_ARG1_LENGTH     35
+#define RS485_ARG2_LENGTH     35
+
+/*** Address ***/
+#define CLIENT_TX_ADDR        0x10
+#define CLIENT_RX_ADDR        0x01
 
 /*** Karuna ***/
-#define KRN_STAT_A0             (uint8_t)1<<0
-#define KRN_STAT_A1             (uint8_t)1<<1
-#define KRN_STAT_A2             (uint8_t)1<<2
-#define KRN_STAT_A3             (uint8_t)1<<3
-#define KRN_STAT_DSD_PCM        (uint8_t)1<<4
-#define KRN_STAT_H51            (uint8_t)1<<5
-#define KRN_STAT_H53            (uint8_t)1<<6
+#define KRN_STAT_A0           (uint8_t)1<<0
+#define KRN_STAT_A1           (uint8_t)1<<1
+#define KRN_STAT_A2           (uint8_t)1<<2
+#define KRN_STAT_A3           (uint8_t)1<<3
+#define KRN_STAT_DSD_PCM      (uint8_t)1<<4
+#define KRN_STAT_H51          (uint8_t)1<<5
+#define KRN_STAT_H53          (uint8_t)1<<6
 
-#define KRN_CTRL_RCA            (uint8_t)1<<0
-#define KRN_CTRL_BNC            (uint8_t)1<<1
-#define KRN_CTRL_XLR            (uint8_t)1<<2
-#define KRN_CTRL_I2S            (uint8_t)1<<3
+#define KRN_CTRL_RCA          (uint8_t)1<<0
+#define KRN_CTRL_BNC          (uint8_t)1<<1
+#define KRN_CTRL_XLR          (uint8_t)1<<2
+#define KRN_CTRL_I2S          (uint8_t)1<<3
 
 /* USER CODE END PD */
 
@@ -116,10 +118,10 @@ DeviceTypeDef Device;
 LiveLED_HnadleTypeDef hLiveLed;
 
 /*** RS485 ***/
-char UartRxBuffer[RS485_BUFFER_SIZE];
-char UartTxBuffer[RS485_BUFFER_SIZE];
-char        UartCharacter;
-uint8_t     UartRxBufferPtr;
+char    UartRxBuffer[RS485_BUFFER_SIZE];
+char    UartTxBuffer[RS485_BUFFER_SIZE];
+char    UartCharacter;
+uint8_t UartRxBufferPtr;
 
 /* USER CODE END PV */
 
@@ -451,41 +453,21 @@ char* RS485Parser(char *line)
   if(params == 2)
   {
     if(!strcmp(cmd, "*OPC?"))
-    {
       strcpy(buffer, "OK");
-    }
-    else if(!strcmp(cmd, "*RDY?"))
-    {
-      strcpy(buffer, "OK");
-    }
-    else if(!strcmp(cmd, "*WHOIS?"))
-    {
-    	sprintf(buffer, "*WHOIS %s", DEVICE_NAME);
-    }
-    else if(!strcmp(cmd, "*VER?"))
-    {
-      sprintf(buffer, "*VER %s", DEVICE_FW);
-    }
-    else if(!strcmp(cmd, "*UID?"))
-    {
-      sprintf(buffer, "*UID %4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
-    }
+    else if(!strcmp(cmd, "FW?"))
+      sprintf(buffer, "FW %s", DEVICE_FW);
+    else if(!strcmp(cmd, "UID?"))
+      sprintf(buffer, "UID %4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
+    else if(!strcmp(cmd, "PCB?"))
+      sprintf(buffer, "PCB %s", DEVICE_PCB);
     else if(!strcmp(cmd,"UPTIME?"))
-    {
        sprintf(buffer, "UPTIME %08lX", Device.Diag.UpTimeSec);
-    }
     else if(!strcmp(cmd,"DI?"))
-    {
        sprintf(buffer, "DI %02X", Device.Karuna.DI);
-    }
     else if(!strcmp(cmd,"DO?"))
-    {
        sprintf(buffer, "DO %02X", Device.Karuna.DO);
-    }
     else
-    {
       Device.Diag.RS485UnknwonCnt++;
-    }
   }
   if(params == 3)
   {
@@ -495,15 +477,11 @@ char* RS485Parser(char *line)
       strcpy(buffer, "OK");
     }
     else
-    {
       Device.Diag.RS485UnknwonCnt++;
-    }
   }
-
-  static char resp[2 * RS485_BUFFER_SIZE];
+  static char resp[RS485_BUFFER_SIZE + 5];
   memset(resp, 0x00, RS485_BUFFER_SIZE);
   sprintf(resp, "#%02X %s", CLIENT_TX_ADDR, buffer);
-
   uint8_t length = strlen(resp);
   resp[length] = '\n';
   resp[length + 1] = '\0';

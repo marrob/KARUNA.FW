@@ -96,11 +96,11 @@ void Error_Handler(void);
 #define   DEVICE_OK   0
 #define   DEVICE_FAIL 1
 
-#define DEVICE_NAME             "KARUNA"    /*!< Eszkoz neve pl.:MDIO130204*/
+#define DEVICE_NAME             "KARUNA"
 #define DEVICE_NAME_SIZE        sizeof(DEVICE_NAME)
-#define DEVICE_FW               "220510_2157"   /*!< Eszkoz Firmware verzioszama pl.:"220428_1004"*/
+#define DEVICE_FW               "220510_2157"
 #define DEVICE_FW_SIZE          sizeof(DEVICE_FW)
-#define DEVICE_PCB              "00"            /*!< Eszkoz PCB verzioszama pl.:"A0"*/
+#define DEVICE_PCB              "V00"
 #define DEVICE_PCB_SIZE         sizeof(DEVICE_PCB)
 #define DEVICE_MNF              "github.com/marrob"
 #define DEVICE_MNF_SIZE         sizeof(DEVICE_MNF)
