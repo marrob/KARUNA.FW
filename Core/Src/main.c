@@ -32,42 +32,25 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-typedef enum _CtrlStatesTypeDef
-{
-  SDEV_START,                   //0
-  SDEV_WAIT,                    //1
-}CtrlStatesTypeDef;
-
 typedef struct _AppTypeDef
 {
-  uint16_t FailCnt;
-  struct
-  {
-    CtrlStatesTypeDef Next;
-    CtrlStatesTypeDef Curr;
-    CtrlStatesTypeDef Pre;
-  }State;
-
   struct _Karuna
   {
-    uint8_t DI;
-    uint8_t DO;
+    uint32_t DI;
+    uint32_t DO;
+    uint32_t UpTimeSec;
   }Karuna;
 
   struct _Diag
   {
     uint32_t MainCycleTime;
     uint32_t UartTaskCnt;
-
     uint32_t RS485ResponseCnt;
     uint32_t RS485RequestCnt;
     uint32_t RS485UnknwonCnt;
     uint32_t RS485NotMyCmdCnt;
-
     uint32_t UART_Receive_IT_ErrorCounter;
     uint32_t UartErrorCounter;
-    uint32_t UpTimeSec;
-
   }Diag;
 
 }DeviceTypeDef;
@@ -88,18 +71,24 @@ typedef struct _AppTypeDef
 #define CLIENT_RX_ADDR        0x01
 
 /*** Karuna ***/
-#define KRN_STAT_A0           (uint8_t)1<<0
-#define KRN_STAT_A1           (uint8_t)1<<1
-#define KRN_STAT_A2           (uint8_t)1<<2
-#define KRN_STAT_A3           (uint8_t)1<<3
-#define KRN_STAT_DSD_PCM      (uint8_t)1<<4
-#define KRN_STAT_H51          (uint8_t)1<<5
-#define KRN_STAT_H53          (uint8_t)1<<6
+#define KRN_DI_A0             ((uint32_t)1<<0)
+#define KRN_DI_A1             ((uint32_t)1<<1)
+#define KRN_DI_A2             ((uint32_t)1<<2)
+#define KRN_DI_A3             ((uint32_t)1<<3)
+#define KRN_DI_DSD_PCM        ((uint32_t)1<<4)
+#define KRN_DI_H51            ((uint32_t)1<<5)
+#define KRN_DI_H53            ((uint32_t)1<<6)
+#define KRN_DI_RCA            ((uint32_t)1<<7)
+#define KRN_DI_BNC            ((uint32_t)1<<8)
+#define KRN_DI_XLR            ((uint32_t)1<<9)
+#define KRN_DI_I2S            ((uint32_t)1<<10)
+#define KRN_DI_MCLK_I2S       ((uint32_t)1<<11)
 
-#define KRN_CTRL_RCA          (uint8_t)1<<0
-#define KRN_CTRL_BNC          (uint8_t)1<<1
-#define KRN_CTRL_XLR          (uint8_t)1<<2
-#define KRN_CTRL_I2S          (uint8_t)1<<3
+#define KRN_DO_RCA_EN         ((uint32_t)1<<0)
+#define KRN_DO_BNC_EN         ((uint32_t)1<<1)
+#define KRN_DO_XLR_EN         ((uint32_t)1<<2)
+#define KRN_DO_I2S_EN         ((uint32_t)1<<3)
+#define KRN_DO_MCLK_I2S_EN    ((uint32_t)1<<4)
 
 /* USER CODE END PD */
 
@@ -148,6 +137,8 @@ void WriteDO(uint8_t state);
 void KarunaFerq22M5792(void);
 void KarunaFreq24M5760(void);
 void KarunaClockSelectTask(void);
+void KarunaMclkOnI2sDisable(void);
+void KarunaMclkOnI2sEnable(void);
 
 /*** Tools ***/
 void UpTimeTask(void);
@@ -173,21 +164,16 @@ int main(void)
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
   /* USER CODE BEGIN Init */
   /*** LiveLed ***/
   hLiveLed.LedOffFnPtr = &LiveLedOff;
   hLiveLed.LedOnFnPtr = &LiveLedOn;
   hLiveLed.HalfPeriodTimeMs = 500;
   LiveLedInit(&hLiveLed);
-
   /*** RS485 ***/
   RS485DirRx();
-
   /*** Karuna ***/
-  Device.Karuna.DO = KRN_CTRL_RCA | KRN_CTRL_BNC | KRN_CTRL_XLR | KRN_CTRL_I2S;
-
-
+  Device.Karuna.DO = KRN_DO_RCA_EN | KRN_DO_BNC_EN | KRN_DO_XLR_EN | KRN_DO_I2S_EN;
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -220,6 +206,31 @@ int main(void)
       Device.Karuna.DI = ReadDI();
       WriteDO(Device.Karuna.DO);
       KarunaClockSelectTask();
+
+      if(Device.Karuna.DO & KRN_DO_RCA_EN)
+        Device.Karuna.DI |= KRN_DI_RCA;
+      else
+        Device.Karuna.DI &= ~KRN_DI_RCA;
+
+      if(Device.Karuna.DO & KRN_DO_BNC_EN)
+        Device.Karuna.DI |= KRN_DI_BNC;
+      else
+        Device.Karuna.DI &= ~KRN_DI_BNC;
+
+      if(Device.Karuna.DO & KRN_DO_XLR_EN)
+        Device.Karuna.DI |= KRN_DI_XLR;
+      else
+        Device.Karuna.DI &= ~KRN_DI_XLR;
+
+      if(Device.Karuna.DO & KRN_DO_I2S_EN)
+        Device.Karuna.DI |= KRN_DI_I2S;
+      else
+        Device.Karuna.DI &= ~KRN_DI_I2S;
+
+      if(Device.Karuna.DO & KRN_DO_MCLK_I2S_EN)
+        Device.Karuna.DI |= KRN_DI_MCLK_I2S;
+      else
+        Device.Karuna.DI &= ~KRN_DI_MCLK_I2S;
     }
     LiveLedTask(&hLiveLed);
     RS485TxTask();
@@ -461,11 +472,11 @@ char* RS485Parser(char *line)
     else if(!strcmp(cmd, "PCB?"))
       sprintf(buffer, "PCB %s", DEVICE_PCB);
     else if(!strcmp(cmd,"UPTIME?"))
-       sprintf(buffer, "UPTIME %08lX", Device.Diag.UpTimeSec);
+       sprintf(buffer, "UPTIME %08lX", Device.Karuna.UpTimeSec);
     else if(!strcmp(cmd,"DI?"))
-       sprintf(buffer, "DI %02X", Device.Karuna.DI);
+       sprintf(buffer, "DI %08lX", Device.Karuna.DI);
     else if(!strcmp(cmd,"DO?"))
-       sprintf(buffer, "DO %02X", Device.Karuna.DO);
+       sprintf(buffer, "DO %08lX", Device.Karuna.DO);
     else
       Device.Diag.RS485UnknwonCnt++;
   }
@@ -518,53 +529,58 @@ uint8_t ReadDI(void)
   uint8_t state = 0;
 
   if(HAL_GPIO_ReadPin(SEL_0_ISO_GPIO_Port, SEL_0_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_A0;
+    state |= KRN_DI_A0;
 
   if(HAL_GPIO_ReadPin(SEL_1_ISO_GPIO_Port, SEL_1_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_A1;
+    state |= KRN_DI_A1;
 
   if(HAL_GPIO_ReadPin(SEL_2_ISO_GPIO_Port, SEL_2_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_A2;
+    state |= KRN_DI_A2;
 
   if(HAL_GPIO_ReadPin(SEL_3_ISO_GPIO_Port, SEL_3_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_A3;
+    state |= KRN_DI_A3;
 
   if(HAL_GPIO_ReadPin(DSD_PCM_ISO_GPIO_Port, DSD_PCM_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_DSD_PCM;
+    state |= KRN_DI_DSD_PCM;
 
   if(HAL_GPIO_ReadPin(DSD_PCM_ISO_GPIO_Port, DSD_PCM_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_DSD_PCM;
+    state |= KRN_DI_DSD_PCM;
 
   if(HAL_GPIO_ReadPin(H5_3_ISO_GPIO_Port, H5_3_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_H53;
+    state |= KRN_DI_H53;
 
   if(HAL_GPIO_ReadPin(H5_1_ISO_GPIO_Port, H5_1_ISO_Pin) == GPIO_PIN_RESET)
-    state |= KRN_STAT_H51;
+    state |= KRN_DI_H51;
 
   return state;
 }
 
 void WriteDO(uint8_t state)
 {
-  if(state & KRN_CTRL_RCA)
+  if(state & KRN_DO_RCA_EN)
     HAL_GPIO_WritePin(EN_SPDIF_0_GPIO_Port, EN_SPDIF_0_Pin, GPIO_PIN_SET);
   else
     HAL_GPIO_WritePin(EN_SPDIF_0_GPIO_Port, EN_SPDIF_0_Pin, GPIO_PIN_RESET);
 
-  if(state & KRN_CTRL_BNC)
+  if(state & KRN_DO_BNC_EN)
     HAL_GPIO_WritePin(EN_SPDIF_1_GPIO_Port, EN_SPDIF_1_Pin, GPIO_PIN_SET);
   else
     HAL_GPIO_WritePin(EN_SPDIF_1_GPIO_Port, EN_SPDIF_1_Pin, GPIO_PIN_RESET);
 
-  if(state & KRN_CTRL_XLR)
+  if(state & KRN_DO_XLR_EN)
     HAL_GPIO_WritePin(EN_AES_GPIO_Port, EN_AES_Pin, GPIO_PIN_SET);
   else
     HAL_GPIO_WritePin(EN_AES_GPIO_Port, EN_AES_Pin, GPIO_PIN_RESET);
 
-  if(state & KRN_CTRL_I2S)
+  if(state & KRN_DO_I2S_EN)
     HAL_GPIO_WritePin(EN_I2S_GPIO_Port, EN_I2S_Pin, GPIO_PIN_SET);
   else
     HAL_GPIO_WritePin(EN_I2S_GPIO_Port, EN_I2S_Pin, GPIO_PIN_RESET);
+
+  if(state & KRN_DO_MCLK_I2S_EN)
+    HAL_GPIO_WritePin(EN_MCLK_GPIO_Port, EN_I2S_Pin, GPIO_PIN_RESET);
+  else
+    HAL_GPIO_WritePin(EN_MCLK_GPIO_Port, EN_I2S_Pin, GPIO_PIN_SET);
 };
 
 void KarunaFerq22M5792(void)
@@ -579,41 +595,27 @@ void KarunaFreq24M5760(void)
 
 void KarunaClockSelectTask(void)
 {
-
-  uint8_t a0 = (Device.Karuna.DI & KRN_STAT_A0) == KRN_STAT_A0;
-  uint8_t dsd = (Device.Karuna.DI & KRN_STAT_DSD_PCM) == KRN_STAT_DSD_PCM;
-
+  uint8_t a0 = (Device.Karuna.DI & KRN_DI_A0) == KRN_DI_A0;
+  uint8_t dsd = (Device.Karuna.DI & KRN_DI_DSD_PCM) == KRN_DI_DSD_PCM;
   if(!a0 && !dsd)
-  {
     KarunaFerq22M5792();
-  }
   if(!a0 && dsd)
-  {
     KarunaFerq22M5792();
-  }
   if(a0 && !dsd)
-  {
     KarunaFreq24M5760();
-  }
   if(a0 && dsd)
-  {
     KarunaFerq22M5792();
-  }
 }
 /* Tools----------------------------------------------------------------------*/
 void UpTimeTask(void)
 {
   static uint32_t timestamp;
-
   if(HAL_GetTick() - timestamp > 1000)
   {
     timestamp = HAL_GetTick();
-    Device.Diag.UpTimeSec++;
+    Device.Karuna.UpTimeSec++;
   }
 }
-
-
-
 /* USER CODE END 4 */
 
 /**
