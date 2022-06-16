@@ -418,14 +418,22 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
     Device.Diag.UART_Receive_IT_ErrorCounter++;
   else
   {
-    if(UartCharacter == '\n')
+    if(UartRxBufferPtr < RS485_BUFFER_SIZE - 1)
     {
-      UartRxBuffer[UartRxBufferPtr] = '\0';
-      strcpy(UartTxBuffer, RS485Parser(UartRxBuffer));
-      UartRxBufferPtr = 0;
+      if(UartCharacter == '\n')
+      {
+        UartRxBuffer[UartRxBufferPtr] = '\0';
+        strcpy(UartTxBuffer, RS485Parser(UartRxBuffer));
+        UartRxBufferPtr = 0;
+      }
+      else
+        UartRxBuffer[UartRxBufferPtr++] = UartCharacter;
     }
     else
-      UartRxBuffer[UartRxBufferPtr++] = UartCharacter;
+    {
+      UartRxBufferPtr = 0;
+      memset(UartRxBuffer,0x00, RS485_BUFFER_SIZE);
+    }
   }
 }
 
