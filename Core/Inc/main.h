@@ -98,7 +98,7 @@ void Error_Handler(void);
 
 #define DEVICE_NAME             "KARUNA"
 #define DEVICE_NAME_SIZE        sizeof(DEVICE_NAME)
-#define DEVICE_FW               "220614_1700"
+#define DEVICE_FW               "220620_1716"
 #define DEVICE_FW_SIZE          sizeof(DEVICE_FW)
 #define DEVICE_PCB              "V00"
 #define DEVICE_PCB_SIZE         sizeof(DEVICE_PCB)

@@ -43,13 +43,10 @@ typedef struct _AppTypeDef
 
   struct _Diag
   {
-    uint32_t MainCycleTime;
-    uint32_t UartTaskCnt;
     uint32_t RS485ResponseCnt;
     uint32_t RS485RequestCnt;
     uint32_t RS485UnknwonCnt;
     uint32_t RS485NotMyCmdCnt;
-    uint32_t UART_Receive_IT_ErrorCounter;
     uint32_t UartErrorCounter;
   }Diag;
 
@@ -102,6 +99,8 @@ typedef struct _AppTypeDef
 
 UART_HandleTypeDef huart1;
 
+WWDG_HandleTypeDef hwwdg;
+
 /* USER CODE BEGIN PV */
 DeviceTypeDef Device;
 LiveLED_HnadleTypeDef hLiveLed;
@@ -119,6 +118,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_WWDG_Init(void);
 /* USER CODE BEGIN PFP */
 
 /*** LiveLed ***/
@@ -164,6 +164,7 @@ int main(void)
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
+
   /* USER CODE BEGIN Init */
   /*** LiveLed ***/
   hLiveLed.LedOffFnPtr = &LiveLedOff;
@@ -187,7 +188,14 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C2_Init();
   MX_USART1_UART_Init();
+  MX_WWDG_Init();
   /* USER CODE BEGIN 2 */
+
+  /*** Check if the system has resumed from WWDG reset ***/
+  if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST) != RESET)
+  {
+    //ToDo
+  }
 
   /* USER CODE END 2 */
 
@@ -197,9 +205,7 @@ int main(void)
 
   while (1)
   {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
+    HAL_WWDG_Refresh(&hwwdg);
     if(HAL_GetTick() - timestamp > 100)
     {
       timestamp = HAL_GetTick();
@@ -235,6 +241,9 @@ int main(void)
     LiveLedTask(&hLiveLed);
     RS485TxTask();
     UpTimeTask();
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
@@ -341,10 +350,38 @@ static void MX_USART1_UART_Init(void)
   }
   /* USER CODE BEGIN USART1_Init 2 */
   if(HAL_UART_Receive_IT(&huart1, (uint8_t *)&UartCharacter, 1) != HAL_OK)
-  {
-    Device.Diag.UART_Receive_IT_ErrorCounter++;
-  }
+    Device.Diag.UartErrorCounter++;
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * @brief WWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_WWDG_Init(void)
+{
+
+  /* USER CODE BEGIN WWDG_Init 0 */
+
+  /* USER CODE END WWDG_Init 0 */
+
+  /* USER CODE BEGIN WWDG_Init 1 */
+
+  /* USER CODE END WWDG_Init 1 */
+  hwwdg.Instance = WWDG;
+  hwwdg.Init.Prescaler = WWDG_PRESCALER_8;
+  hwwdg.Init.Window = 127;
+  hwwdg.Init.Counter = 127;
+  hwwdg.Init.EWIMode = WWDG_EWI_DISABLE;
+  if (HAL_WWDG_Init(&hwwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN WWDG_Init 2 */
+
+  /* USER CODE END WWDG_Init 2 */
 
 }
 
@@ -415,7 +452,7 @@ void LiveLedOff(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
 {
   if(HAL_UART_Receive_IT(context, (uint8_t *)&UartCharacter, 1) != HAL_OK)
-    Device.Diag.UART_Receive_IT_ErrorCounter++;
+    Device.Diag.UartErrorCounter++;
   else
   {
     if(UartRxBufferPtr < RS485_BUFFER_SIZE - 1)
@@ -446,7 +483,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     __HAL_UART_CLEAR_OREFLAG(huart);
 
   if(HAL_UART_Receive_IT(huart, (uint8_t *)&UartCharacter, 1) != HAL_OK)
-    Device.Diag.UART_Receive_IT_ErrorCounter++;
+    Device.Diag.UartErrorCounter++;
 }
 
 char* RS485Parser(char *line)
@@ -485,6 +522,8 @@ char* RS485Parser(char *line)
        sprintf(buffer, "DI %08lX", Device.Karuna.DI);
     else if(!strcmp(cmd,"DO?"))
        sprintf(buffer, "DO %08lX", Device.Karuna.DO);
+    else if(!strcmp(cmd,"UE?"))
+      sprintf(buffer, "UE %08lX", Device.Diag.UartErrorCounter);
     else
       Device.Diag.RS485UnknwonCnt++;
   }
