@@ -47,7 +47,7 @@ typedef struct _AppTypeDef
     uint32_t RS485RequestCnt;
     uint32_t RS485UnknwonCnt;
     uint32_t RS485NotMyCmdCnt;
-    uint32_t UartErrorCounter;
+    uint32_t UartErrorCnt;
   }Diag;
 
 }DeviceTypeDef;
@@ -350,7 +350,7 @@ static void MX_USART1_UART_Init(void)
   }
   /* USER CODE BEGIN USART1_Init 2 */
   if(HAL_UART_Receive_IT(&huart1, (uint8_t *)&UartCharacter, 1) != HAL_OK)
-    Device.Diag.UartErrorCounter++;
+    Device.Diag.UartErrorCnt++;
   /* USER CODE END USART1_Init 2 */
 
 }
@@ -452,7 +452,7 @@ void LiveLedOff(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
 {
   if(HAL_UART_Receive_IT(context, (uint8_t *)&UartCharacter, 1) != HAL_OK)
-    Device.Diag.UartErrorCounter++;
+    Device.Diag.UartErrorCnt++;
   else
   {
     if(UartRxBufferPtr < RS485_BUFFER_SIZE - 1)
@@ -476,14 +476,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    Device.Diag.UartErrorCounter++;
+    Device.Diag.UartErrorCnt++;
     __HAL_UART_CLEAR_PEFLAG(huart);
     __HAL_UART_CLEAR_FEFLAG(huart);
     __HAL_UART_CLEAR_NEFLAG(huart);
     __HAL_UART_CLEAR_OREFLAG(huart);
 
   if(HAL_UART_Receive_IT(huart, (uint8_t *)&UartCharacter, 1) != HAL_OK)
-    Device.Diag.UartErrorCounter++;
+    Device.Diag.UartErrorCnt++;
 }
 
 char* RS485Parser(char *line)
@@ -523,7 +523,7 @@ char* RS485Parser(char *line)
     else if(!strcmp(cmd,"DO?"))
        sprintf(buffer, "DO %08lX", Device.Karuna.DO);
     else if(!strcmp(cmd,"UE?"))
-      sprintf(buffer, "UE %08lX", Device.Diag.UartErrorCounter);
+      sprintf(buffer, "UE %08lX", Device.Diag.UartErrorCnt);
     else
       Device.Diag.RS485UnknwonCnt++;
   }
