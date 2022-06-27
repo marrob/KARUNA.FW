@@ -80,6 +80,7 @@ typedef struct _AppTypeDef
 #define KRN_DI_XLR            ((uint32_t)1<<9)
 #define KRN_DI_I2S            ((uint32_t)1<<10)
 #define KRN_DI_MCLK_I2S       ((uint32_t)1<<11)
+#define KRN_DI_MCLK_OUT       ((uint32_t)1<<12)
 
 #define KRN_DO_RCA_EN         ((uint32_t)1<<0)
 #define KRN_DO_BNC_EN         ((uint32_t)1<<1)
@@ -234,9 +235,15 @@ int main(void)
         Device.Karuna.DI &= ~KRN_DI_I2S;
 
       if(Device.Karuna.DO & KRN_DO_MCLK_I2S_EN)
+      {
         Device.Karuna.DI |= KRN_DI_MCLK_I2S;
+        Device.Karuna.DI |= KRN_DI_MCLK_OUT;
+      }
       else
+      {
         Device.Karuna.DI &= ~KRN_DI_MCLK_I2S;
+        Device.Karuna.DI &= ~KRN_DI_MCLK_OUT;
+      }
     }
     LiveLedTask(&hLiveLed);
     RS485TxTask();
@@ -625,9 +632,9 @@ void WriteDO(uint8_t state)
     HAL_GPIO_WritePin(EN_I2S_GPIO_Port, EN_I2S_Pin, GPIO_PIN_RESET);
 
   if(state & KRN_DO_MCLK_I2S_EN)
-    HAL_GPIO_WritePin(EN_MCLK_GPIO_Port, EN_I2S_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(EN_MCLK_GPIO_Port, EN_MCLK_Pin, GPIO_PIN_RESET);
   else
-    HAL_GPIO_WritePin(EN_MCLK_GPIO_Port, EN_I2S_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(EN_MCLK_GPIO_Port, EN_MCLK_Pin, GPIO_PIN_SET);
 };
 
 void KarunaFerq22M5792(void)
