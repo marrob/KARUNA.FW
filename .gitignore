@@ -13,3 +13,6 @@ Release/*
 *.tmp
 
 /Debug/
+
+stm32cubeide.project.prefs
+language.settings.xml
