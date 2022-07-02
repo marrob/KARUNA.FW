@@ -469,6 +469,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
         UartRxBuffer[UartRxBufferPtr] = '\0';
         strcpy(UartTxBuffer, RS485Parser(UartRxBuffer));
         UartRxBufferPtr = 0;
+        break;
       }
       else
         UartRxBuffer[UartRxBufferPtr++] = UartCharacter;
