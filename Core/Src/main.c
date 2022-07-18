@@ -43,6 +43,7 @@ typedef struct _AppTypeDef
 
   struct _Diag
   {
+    uint8_t  WakeUpFromWdtReset;
     uint32_t RS485ResponseCnt;
     uint32_t RS485RequestCnt;
     uint32_t RS485UnknwonCnt;
@@ -96,7 +97,7 @@ typedef struct _AppTypeDef
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
- I2C_HandleTypeDef hi2c2;
+I2C_HandleTypeDef hi2c2;
 
 UART_HandleTypeDef huart1;
 
@@ -195,7 +196,7 @@ int main(void)
   /*** Check if the system has resumed from WWDG reset ***/
   if (__HAL_RCC_GET_FLAG(RCC_FLAG_WWDGRST) != RESET)
   {
-    //ToDo
+    Device.Diag.WakeUpFromWdtReset = 1;
   }
 
   /* USER CODE END 2 */
@@ -469,7 +470,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *context)
         UartRxBuffer[UartRxBufferPtr] = '\0';
         strcpy(UartTxBuffer, RS485Parser(UartRxBuffer));
         UartRxBufferPtr = 0;
-        break;
       }
       else
         UartRxBuffer[UartRxBufferPtr++] = UartCharacter;
@@ -507,50 +507,60 @@ char* RS485Parser(char *line)
   memset(arg1,0x00, RS485_ARG1_LENGTH);
   memset(arg2,0x00, RS485_ARG2_LENGTH);
 
-  uint8_t params = sscanf(line, "#%x %s %s %s",&addr, cmd, arg1, arg2);
+  sscanf(line, "#%x %s",&addr, cmd);
   if(addr != CLIENT_RX_ADDR)
   {
     Device.Diag.RS485NotMyCmdCnt++;
     return NULL;
   }
   Device.Diag.RS485RequestCnt++;
-  if(params == 2)
+
+  if(!strcmp(cmd, "*OPC?"))
   {
-    if(!strcmp(cmd, "*OPC?"))
-      strcpy(buffer, "OK");
-    else if(!strcmp(cmd, "FW?"))
-      sprintf(buffer, "FW %s", DEVICE_FW);
-    else if(!strcmp(cmd, "UID?"))
-      sprintf(buffer, "UID %4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
-    else if(!strcmp(cmd, "PCB?"))
-      sprintf(buffer, "PCB %s", DEVICE_PCB);
-    else if(!strcmp(cmd,"UPTIME?"))
-       sprintf(buffer, "UPTIME %08lX", Device.Karuna.UpTimeSec);
-    else if(!strcmp(cmd,"DI?"))
-       sprintf(buffer, "DI %08lX", Device.Karuna.DI);
-    else if(!strcmp(cmd,"DO?"))
-       sprintf(buffer, "DO %08lX", Device.Karuna.DO);
-    else if(!strcmp(cmd,"UE?"))
-      sprintf(buffer, "UE %08lX", Device.Diag.UartErrorCnt);
-    else
-      Device.Diag.RS485UnknwonCnt++;
+    strcpy(buffer, "OK");
   }
-  if(params == 3)
+  else if(!strcmp(cmd, "FW?"))
   {
-    if(!strcmp(cmd,"DO"))
-    {
-      Device.Karuna.DO = strtol(arg1, NULL, 16);
-      strcpy(buffer, "OK");
-    }
-    else
-      Device.Diag.RS485UnknwonCnt++;
+    sprintf(buffer, "FW %s", DEVICE_FW);
+  }
+  else if(!strcmp(cmd, "UID?"))
+  {
+    sprintf(buffer, "UID %4lX%4lX%4lX",HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2());
+  }
+  else if(!strcmp(cmd, "PCB?"))
+  {
+    sprintf(buffer, "PCB %s", DEVICE_PCB);
+  }
+  else if(!strcmp(cmd,"UPTIME?"))
+  {
+     sprintf(buffer, "UPTIME %08lX", Device.Karuna.UpTimeSec);
+  }
+  else if(!strcmp(cmd,"DI?"))
+  {
+     sprintf(buffer, "DI %08lX", Device.Karuna.DI);
+  }
+  else if(!strcmp(cmd,"DO?"))
+  {
+     sprintf(buffer, "DO %08lX", Device.Karuna.DO);
+  }
+  else if(!strcmp(cmd,"UE?"))
+  {
+    sprintf(buffer, "UE %08lX", Device.Diag.UartErrorCnt);
+  }
+  else if(!strcmp(cmd,"DO"))
+  {
+    sscanf(line, "#%x %s %s",&addr, cmd, arg1);
+    Device.Karuna.DO = strtol(arg1, NULL, 16);
+    strcpy(buffer, "OK");
+  }
+  else
+  {
+    Device.Diag.RS485UnknwonCnt++;
   }
   static char resp[RS485_BUFFER_SIZE + 5];
   memset(resp, 0x00, RS485_BUFFER_SIZE);
   sprintf(resp, "#%02X %s", CLIENT_TX_ADDR, buffer);
-  uint8_t length = strlen(resp);
-  resp[length] = '\n';
-  resp[length + 1] = '\0';
+  strcat(resp,"\n");
   return resp;
 }
 
