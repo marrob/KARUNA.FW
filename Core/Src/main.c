@@ -231,19 +231,23 @@ int main(void)
         Device.Karuna.DI &= ~KRN_DI_XLR;
 
       if(Device.Karuna.DO & KRN_DO_I2S_EN)
-        Device.Karuna.DI |= KRN_DI_I2S;
-      else
-        Device.Karuna.DI &= ~KRN_DI_I2S;
-
-      if(Device.Karuna.DO & KRN_DO_MCLK_I2S_EN)
       {
-        Device.Karuna.DI |= KRN_DI_MCLK_I2S;
+        Device.Karuna.DI |= KRN_DI_I2S;
         Device.Karuna.DI |= KRN_DI_MCLK_OUT;
       }
       else
       {
-        Device.Karuna.DI &= ~KRN_DI_MCLK_I2S;
+        Device.Karuna.DI &= ~KRN_DI_I2S;
         Device.Karuna.DI &= ~KRN_DI_MCLK_OUT;
+      }
+
+      if(Device.Karuna.DO & KRN_DO_MCLK_I2S_EN)
+      {
+        Device.Karuna.DI |= KRN_DI_MCLK_I2S;
+      }
+      else
+      {
+        Device.Karuna.DI &= ~KRN_DI_MCLK_I2S;
       }
     }
     LiveLedTask(&hLiveLed);
